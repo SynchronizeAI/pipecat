@@ -39,6 +39,7 @@ from pipecat.frames.frames import (
     MixerControlFrame,
     OutputAudioRawFrame,
     OutputTransportMessageFrame,
+    SpeechBoundaryFrame,
     StartFrame,
     TTSAudioRawFrame,
     TTSStartedFrame,
@@ -1102,6 +1103,21 @@ class TestBaseOutputTransportFunctionCallResults(unittest.IsolatedAsyncioTestCas
         try:
             sender, _ = await self._deliver_in_progress(transport)
             await transport.process_frame(self._filler_line(sender), FrameDirection.DOWNSTREAM)
+            await self._assert_result_bypasses(transport, self._result())
+        finally:
+            release.set()
+            await transport.cancel(CancelFrame())
+
+    async def test_a_synchronous_result_passes_speech_boundaries_around_filler(self):
+        transport, release = await self._held_write_transport()
+        try:
+            sender, _ = await self._deliver_in_progress(transport)
+            for frame in (
+                SpeechBoundaryFrame("line", beginning=True),
+                self._filler_line(sender),
+                SpeechBoundaryFrame("line", beginning=False),
+            ):
+                await transport.process_frame(frame, FrameDirection.DOWNSTREAM)
             await self._assert_result_bypasses(transport, self._result())
         finally:
             release.set()

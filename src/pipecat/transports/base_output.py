@@ -48,6 +48,7 @@ from pipecat.frames.frames import (
     OutputTransportMessageFrame,
     OutputTransportMessageUrgentFrame,
     OutputTransportReadyFrame,
+    SpeechBoundaryFrame,
     SpeechOutputAudioRawFrame,
     SpriteFrame,
     StartFrame,
@@ -745,6 +746,10 @@ class BaseOutputTransport(FrameProcessor):
             if isinstance(frame, TTSStartedFrame):
                 return not frame.append_to_context
             if isinstance(frame, TTSStoppedFrame):
+                return True
+            if isinstance(frame, SpeechBoundaryFrame):
+                # Only marks where a speech request starts and ends; the frames
+                # between the two boundaries decide whether it binds the context.
                 return True
             if isinstance(frame, (TextFrame, TTSSpeakFrame)):
                 return not frame.append_to_context
