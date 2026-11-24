@@ -65,6 +65,7 @@ from pipecat.frames.frames import (
     TTSMetadataFrame,
     UserTurnResponseCancelFrame,
 )
+from pipecat.metrics.metrics import LLMTokenUsage, LLMUsageMetricsData
 from pipecat.processors.aggregators.async_tool_messages import ASYNC_TOOL_INSTRUCTIONS
 from pipecat.processors.aggregators.llm_context import (
     NOT_GIVEN,
@@ -329,6 +330,8 @@ class LLMService(UserTurnCompletionLLMServiceMixin, AIService, Generic[TAdapter]
       only schedule work, never wait for it to complete.
     - on_function_calls_cancelled: Called after one or more async tool calls are
       cancelled.
+    - on_inference_usage: Called with the ``LLMUsageMetricsData`` of each
+      ``run_inference`` call, whose usage never reaches the pipeline's metrics.
 
     Example::
 
@@ -532,6 +535,7 @@ class LLMService(UserTurnCompletionLLMServiceMixin, AIService, Generic[TAdapter]
         self._register_event_handler("on_function_calls_prepared", sync=True)
         self._register_event_handler("on_function_calls_cancelled")
         self._register_event_handler("on_completion_timeout")
+        self._register_event_handler("on_inference_usage", sync=True)
 
     @classmethod
     def _resolve_adapter_class(cls) -> type[BaseLLMAdapter]:
@@ -633,6 +637,14 @@ class LLMService(UserTurnCompletionLLMServiceMixin, AIService, Generic[TAdapter]
             The LLM's response as a string, or None if no response is generated.
         """
         raise NotImplementedError(f"run_inference() not supported by {self.__class__.__name__}")
+
+    async def _report_inference_usage(self, usage: LLMTokenUsage):
+        """Report a ``run_inference`` call's usage through ``on_inference_usage``."""
+        model = self._settings.model
+        data = LLMUsageMetricsData(
+            processor=self.name, model=model if isinstance(model, str) else "", value=usage
+        )
+        await self._call_event_handler("on_inference_usage", data)
 
     def _check_response_schema(
         self, response_schema: dict[str, Any] | None

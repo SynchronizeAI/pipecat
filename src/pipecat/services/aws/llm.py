@@ -14,6 +14,7 @@ function calling.
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -355,6 +356,14 @@ class AWSBedrockLLMService(LLMService[AWSBedrockLLMAdapter]):
         ) as client:
             # Call Bedrock without streaming
             response = await client.converse(**request_params)
+            usage = response.get("usage") or {}
+            await self._report_usage_metrics(
+                prompt_tokens=usage.get("inputTokens", 0),
+                completion_tokens=usage.get("outputTokens", 0),
+                cache_read_input_tokens=usage.get("cacheReadInputTokens", 0),
+                cache_creation_input_tokens=usage.get("cacheWriteInputTokens", 0),
+                report=self._report_inference_usage,
+            )
 
             # Extract the response text
             if (
@@ -786,6 +795,7 @@ class AWSBedrockLLMService(LLMService[AWSBedrockLLMAdapter]):
         completion_tokens: int,
         cache_read_input_tokens: int,
         cache_creation_input_tokens: int,
+        report: Callable[[LLMTokenUsage], Awaitable[None]] | None = None,
     ):
         if (
             prompt_tokens
@@ -809,4 +819,4 @@ class AWSBedrockLLMService(LLMService[AWSBedrockLLMAdapter]):
                 cache_read_input_tokens=cache_read_input_tokens,
                 cache_creation_input_tokens=cache_creation_input_tokens,
             )
-            await self.start_llm_usage_metrics(tokens)
+            await (report or self.start_llm_usage_metrics)(tokens)

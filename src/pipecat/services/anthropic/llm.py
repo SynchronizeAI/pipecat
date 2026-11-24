@@ -13,6 +13,7 @@ including support for function calling, vision, and prompt caching features.
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional, Union
 
@@ -529,6 +530,13 @@ class AnthropicLLMService(LLMService[AnthropicLLMAdapter]):
         # LLM completion
         response = await self._client.beta.messages.create(**params)
         self._handle_stop_reason(response)
+        await self._report_usage_metrics(
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            cache_creation_input_tokens=response.usage.cache_creation_input_tokens or 0,
+            cache_read_input_tokens=response.usage.cache_read_input_tokens or 0,
+            report=self._report_inference_usage,
+        )
 
         return next((block.text for block in response.content if hasattr(block, "text")), None)
 
@@ -813,6 +821,7 @@ class AnthropicLLMService(LLMService[AnthropicLLMAdapter]):
         cache_creation_input_tokens: int,
         cache_read_input_tokens: int,
         reasoning_tokens: int | None = None,
+        report: Callable[[LLMTokenUsage], Awaitable[None]] | None = None,
     ):
         if (
             prompt_tokens
@@ -836,4 +845,4 @@ class AnthropicLLMService(LLMService[AnthropicLLMAdapter]):
                     + completion_tokens
                 ),
             )
-            await self.start_llm_usage_metrics(tokens)
+            await (report or self.start_llm_usage_metrics)(tokens)

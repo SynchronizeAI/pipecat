@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from anthropic.types.beta import BetaUsage
 from loguru import logger
 
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -56,7 +57,9 @@ def _log_lines(*models: str) -> list[str]:
 async def _request(service: AnthropicLLMService, **kwargs) -> dict[str, Any]:
     """Return the request params run_inference sends for a service."""
     service._client = AsyncMock()
-    service._client.beta.messages.create.return_value = SimpleNamespace(content=[])
+    service._client.beta.messages.create.return_value = SimpleNamespace(
+        content=[], usage=BetaUsage(input_tokens=0, output_tokens=0)
+    )
 
     await service.run_inference(LLMContext(messages=[{"role": "user", "content": "hi"}]), **kwargs)
 

@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from anthropic.types.beta import BetaUsage
 
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.anthropic.llm import AnthropicLLMService
@@ -26,7 +27,9 @@ async def _request_kwargs(**settings: Any) -> dict[str, Any]:
         api_key="test-key", settings=AnthropicLLMService.Settings(**settings)
     )
     service._client = AsyncMock()
-    service._client.beta.messages.create.return_value = SimpleNamespace(content=[])
+    service._client.beta.messages.create.return_value = SimpleNamespace(
+        content=[], usage=BetaUsage(input_tokens=0, output_tokens=0)
+    )
 
     await service.run_inference(LLMContext(messages=[{"role": "user", "content": "hi"}]))
 

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from anthropic.types.beta import BetaUsage
 from loguru import logger
 
 from pipecat.frames.frames import (
@@ -151,7 +152,10 @@ async def _run_inference(text, stop_reason, category=None):
     )
     details = SimpleNamespace(type="refusal", category=category) if category else None
     content = [SimpleNamespace(type="text", text=text)] if text is not None else []
-    message = SimpleNamespace(content=content, stop_reason=stop_reason, stop_details=details)
+    usage = BetaUsage(input_tokens=0, output_tokens=0)
+    message = SimpleNamespace(
+        content=content, stop_reason=stop_reason, stop_details=details, usage=usage
+    )
 
     async def create(**params):
         return message

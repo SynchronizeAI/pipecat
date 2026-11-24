@@ -506,6 +506,8 @@ class BaseOpenAILLMService(LLMService[OpenAILLMAdapter]):
 
         # LLM completion
         response = await self._client.chat.completions.create(**params)
+        if response.usage:
+            await self._report_inference_usage(self._token_usage(response.usage))
 
         return response.choices[0].message.content
 

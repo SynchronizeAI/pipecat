@@ -63,6 +63,7 @@ try:
         FinishReason,
         GenerateContentConfig,
         GenerateContentResponse,
+        GenerateContentResponseUsageMetadata,
         HttpOptions,
         SafetySetting,
     )
@@ -468,6 +469,9 @@ class GoogleLLMService(LLMService[GeminiLLMAdapter]):
             config=generation_config,
         )
 
+        if response.usage_metadata:
+            await self._report_inference_usage(self._token_usage(response.usage_metadata))
+
         if response.candidates and response.candidates[0].finish_reason:
             self._handle_finish_reason(response.candidates[0].finish_reason)
 
@@ -478,6 +482,22 @@ class GoogleLLMService(LLMService[GeminiLLMAdapter]):
                     return part.text
 
         return None
+
+    def _token_usage(self, usage: GenerateContentResponseUsageMetadata) -> LLMTokenUsage:
+        """Convert a Gemini response's usage metadata into Pipecat's token usage."""
+        reasoning_tokens = usage.thoughts_token_count or 0
+        # Gemini counts tool results fed back to the model apart from the prompt,
+        # and thinking tokens apart from the candidates, but they are input and
+        # output too.
+        prompt_tokens = (usage.prompt_token_count or 0) + (usage.tool_use_prompt_token_count or 0)
+        completion_tokens = (usage.candidates_token_count or 0) + reasoning_tokens
+        return LLMTokenUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            cache_read_input_tokens=usage.cached_content_token_count or 0,
+            reasoning_tokens=reasoning_tokens,
+        )
 
     def _build_generation_params(
         self,
@@ -769,11 +789,13 @@ class GoogleLLMService(LLMService[GeminiLLMAdapter]):
         response_generation = self._begin_tool_response()
         await self.push_frame(LLMFullResponseStartFrame())
 
-        prompt_tokens = 0
-        completion_tokens = 0
-        total_tokens = 0
-        cache_read_input_tokens = 0
-        reasoning_tokens = 0
+        usage = LLMTokenUsage(
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            cache_read_input_tokens=0,
+            reasoning_tokens=0,
+        )
 
         grounding_metadata = None
         accumulated_text = ""
@@ -790,18 +812,7 @@ class GoogleLLMService(LLMService[GeminiLLMAdapter]):
                 # We use assignment (not accumulation) because the final chunk always contains
                 # the authoritative, billable token usage for the entire response.
                 if chunk.usage_metadata:
-                    reasoning_tokens = chunk.usage_metadata.thoughts_token_count or 0
-                    # Gemini counts tool results fed back to the model apart from the
-                    # prompt, and thinking tokens apart from the candidates, but they
-                    # are input and output too.
-                    prompt_tokens = (chunk.usage_metadata.prompt_token_count or 0) + (
-                        chunk.usage_metadata.tool_use_prompt_token_count or 0
-                    )
-                    completion_tokens = (
-                        chunk.usage_metadata.candidates_token_count or 0
-                    ) + reasoning_tokens
-                    total_tokens = prompt_tokens + completion_tokens
-                    cache_read_input_tokens = chunk.usage_metadata.cached_content_token_count or 0
+                    usage = self._token_usage(chunk.usage_metadata)
 
                 if not chunk.candidates:
                     continue
@@ -1010,15 +1021,7 @@ class GoogleLLMService(LLMService[GeminiLLMAdapter]):
                 )
                 await self.push_frame(llm_search_frame)
 
-            await self.start_llm_usage_metrics(
-                LLMTokenUsage(
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    cache_read_input_tokens=cache_read_input_tokens,
-                    reasoning_tokens=reasoning_tokens,
-                )
-            )
+            await self.start_llm_usage_metrics(usage)
             await self.push_frame(LLMFullResponseEndFrame())
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):

@@ -200,7 +200,7 @@ async def test_run_inference_applies_the_thinking_default():
             model="gemini-3.6-flash", system_instruction="You are helpful."
         ),
     )
-    response = SimpleNamespace(candidates=[])
+    response = SimpleNamespace(candidates=[], usage_metadata=None)
 
     with patch.object(
         service._client.aio.models, "generate_content", return_value=response
